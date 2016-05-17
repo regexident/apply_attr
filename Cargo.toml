@@ -1,0 +1,21 @@
+[package]
+authors = ["Vincent Esche <regexident@gmail.com>"]
+description = "A syntax extension providing higher-order attributes to Rust."
+documentation = "https://regexident.github.io/apply_attr"
+homepage = "https://github.com/regexident/apply_attr"
+keywords = ["higher-order", "attribute", "apply"]
+license = "MPL-2.0"
+name = "apply_attr"
+readme = "README.md"
+repository = "https://github.com/regexident/apply_attr"
+version = "0.1.0"
+
+[lib]
+name = "apply_attr"
+crate-type = ["dylib"]
+
+[dependencies]
+bitflags = "^0.7.0"
+
+[dev-dependencies]
+compiletest_rs = "0.1.1"
