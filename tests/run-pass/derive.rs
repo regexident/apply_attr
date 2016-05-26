@@ -1,19 +1,20 @@
 #![feature(plugin)]
 #![plugin(apply_attr)]
 
-#![apply_attr_enums(derive(PartialEq))]
-#![apply_attr_structs(derive(PartialEq))]
+#![apply_attr(to(enums, structs, mods(structs)), default(derive(PartialEq)))]
 
 struct Foo;
 
-struct Bar;
+enum Bar {
+    Baz
+}
 
-enum Baz {
-    Blee
+mod blee {
+    pub struct Blee;
 }
 
 fn main() {
     Foo == Foo;
-    Bar == Bar;
-    Baz::Blee == Baz::Blee;
+    Bar::Baz == Bar::Baz;
+    blee::Blee == blee::Blee;
 }

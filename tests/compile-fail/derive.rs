@@ -1,13 +1,16 @@
 #![feature(plugin)]
 #![plugin(apply_attr)]
 
-#![apply_attr_enums(derive(PartialEq))]
-#![apply_attr_structs(derive(PartialEq))]
+#![apply_attr(to(structs), default(derive(PartialEq)))]
 
-pub struct Foo;
+pub enum Foo {
+    Bar
+}
 
-#[apply_attr_enums(derive(PartialEq))]
-mod Bar {
+pub struct Bar;
+
+#[apply_attr(to(enums), default(derive(PartialEq)))]
+mod foo {
     pub struct Baz;
     pub enum Blee {
         FooBar
@@ -15,10 +18,13 @@ mod Bar {
 }
 
 fn main() {
-    Foo == Foo;
+    Foo::Bar == Foo::Bar;
+    //~^ ERROR binary operation `==` cannot be applied to type `Foo`
 
-    Bar::Baz == Bar::Baz;
-    //~^ ERROR binary operation `==` cannot be applied to type `Bar::Baz`
+    Bar == Bar;
 
-    Bar::Blee::FooBar == Bar::Blee::FooBar;
+    foo::Baz == foo::Baz;
+    //~^ ERROR binary operation `==` cannot be applied to type `foo::Baz`
+
+    foo::Blee::FooBar == foo::Blee::FooBar;
 }

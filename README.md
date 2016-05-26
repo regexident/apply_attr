@@ -24,10 +24,10 @@ Possible use-cases would be:
 Add the following to your dependencies in your project's `Cargo.toml`:
 
 ```toml
-apply_attr = "0.1.0"
+apply_attr = "0.2.0"
 ```
 
-… or whatever [other version](./releases) is more up-to-date.
+… or whatever [version](https://crates.io/crates/apply_attr) is more up-to-date.
 
 Then add …
 
@@ -37,57 +37,143 @@ Then add …
 ```
 … to your crate's root file (e.g. `lib.rs`, `main.rs`).
 
-This gives you access to the following attributes:
+Once that's done you're ready to play!
 
-```rust
-#[apply_attr_crates(...)]    // available for: mods
-#[apply_attr_uses(...)]      // available for: mods
-#[apply_attr_statics(...)]   // available for: mods
-#[apply_attr_consts(...)]    // available for: mods/impls/traits
-#[apply_attr_fns(...)]       // available for: mods/impls/traits
-#[apply_attr_mods(...)]      // available for: mods
-#[apply_attr_fgn_mods(...)]  // available for: mods
-#[apply_attr_types(...)]     // available for: mods/impls/traits
-#[apply_attr_enums(...)]     // available for: mods
-#[apply_attr_structs(...)]   // available for: mods
-#[apply_attr_traits(...)]    // available for: mods
-#[apply_attr_def_impls(...)] // available for: mods
-#[apply_attr_impls(...)]     // available for: mods
-#[apply_attr_macros(...)]    // available for: mods/impls
-```
+# Example
 
-## Example
 ```rust
 #![feature(plugin)]
 #![plugin(apply_attr)]
 
-#![apply_attr_structs(derive(PartialEq))]
+// Make all top-level structs as well as those
+// within top-level mods implement `PartialEq`:
+#![apply_attr(to(structs, mods(structs)), default(derive(PartialEq)))]
 
 pub struct Foo;
 
-#[apply_attr_structs(derive(PartialEq))]
 mod Bar {
-    pub struct Baz;
-    // ...
+  pub struct Baz;
+  // ...
 }
 
-#![apply_attr_fns(inline)]
+// Disable inlining when `no_inline` feature is present:
+#[cfg_attr(feature = "no_inline", apply_attr(to(fns), override(inline(never))))]
 impl Blee {
-    fn foo(&self) { /* ... */ }
-    fn bar(&self) { /* ... */ }
-    fn baz(&self) { /* ... */ }
-    fn blee(&self) { /* ... */ }
+  fn foo(&self) { ... }
+  fn bar(&self) { ... }
+  fn baz(&self) { ... }
+  fn blee(&self) { ... }
 }
 
 fn main() {
-    Foo == Foo;
-    Bar::Baz == Bar::Baz;
+  Foo == Foo;
+  Bar::Baz == Bar::Baz;
 }
 ```
 
 ## API Reference
 
-[Documentation](https://regexident.github.io/apply_attr)
+The `apply_attr` syntax extension provides a single higher-order attribute,  
+conveniently named `apply_attr` expecting two arguments:
+
+1. `to(...)` (with `...` being a list of zero or more selectors).
+2. `default(...)` or `override(...)` (with `...` being a list of zero or more attributes).
+
+Resulting either of:
+
+```rust
+#[apply_attr(to(...), default(...))]
+#[apply_attr(to(...), override(...))]
+```
+
+The first argument (`to(...)`) accepts a nested list of item selectors.
+
+## Selectors
+
+Selectors behave similar to CSS selectors:
+
+As such a CSS selector like `div > span, p` would translate to `to(div(span), p)`.
+
+### Flat Selectors
+
+The following selectors are supported:
+
+```rust
+consts
+crates
+def_impls
+enums
+fgn_mods
+fns
+impls
+macros
+mods
+statics
+structs
+traits
+types
+uses
+```
+
+### Nested Selectors
+
+With the following ones allowing for nesting:
+
+```rust
+mods(...)
+impls(...)
+traits(...)
+```
+
+Nested selectors denote direct ancestry equivalent to CSS's `outer > inner` path operator.
+
+## Attributes
+
+### Default
+
+Attributes can either be applied as using `default(...)`, in which case …
+
+```rust
+#[apply_attr(to(fns), default(inline(never)))]
+impl Foo {
+  #[inline(always)]
+  fn foo() { ... }
+}
+```
+
+… will be turned into …
+
+```rust
+impl Foo {
+  #[inline(always)]
+  fn foo() { ... }
+}
+```
+
+… upon completion.
+
+### Override
+
+Or using `override(...)`, in which case …
+
+```rust
+#[apply_attr(to(fns), override(inline(never)))]
+impl Foo {
+  #[inline(always)]
+  fn foo() { ... }
+}
+```
+
+… will be turned into …
+
+```rust
+impl Foo {
+  #[inline(never)]
+  fn foo() { ... }
+}
+```
+
+… upon completion.
 
 ## Debugging
 
@@ -99,7 +185,8 @@ cargo rustc -- -Z unstable-options --pretty=expanded
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our [code of conduct](https://www.rust-lang.org/conduct.html), and the process for submitting pull requests to us.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our [code of conduct](https://www.rust-lang.org/conduct.html),  
+and the process for submitting pull requests to us.
 
 ## Versioning
 
@@ -107,10 +194,10 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 
 ## Authors
 
-* **Vincent Esche** - *Initial work* - [Regexident](https://github.com/Regexident)
+* **Vincent Esche** – *Initial work* – [Regexident](https://github.com/Regexident)
 
 See also the list of [contributors](https://github.com/regexident/apply_attr/contributors) who participated in this project.
 
 ## License
 
-This project is licensed under the **BSD License** - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the [**MPL-2.0**](https://tldrlegal.com/license/mozilla-public-license-2.0-(mpl-2) – see the [LICENSE.md](LICENSE.md) file for details.
