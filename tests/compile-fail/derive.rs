@@ -1,7 +1,7 @@
 #![feature(plugin)]
 #![plugin(apply_attr)]
 
-#![apply_attr(to(structs), default(derive(PartialEq)))]
+#![apply_attr(to(structs), as_default(derive(PartialEq)))]
 
 pub enum Foo {
     Bar
@@ -9,7 +9,7 @@ pub enum Foo {
 
 pub struct Bar;
 
-#[apply_attr(to(enums), default(derive(PartialEq)))]
+#[apply_attr(to(enums), as_override(derive(PartialEq)))]
 mod foo {
     pub struct Baz;
     pub enum Blee {

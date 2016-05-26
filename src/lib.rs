@@ -261,7 +261,7 @@ fn extract_meta<'a>(ctx: &mut ExtCtxt,
         }
     }
     ctx.span_err(meta.span,
-                 "Expected 'apply_attr(to(...), default|override(...))'.");
+                 "Expected 'apply_attr(to(...), as_default|as_override(...))'.");
     None
 }
 
@@ -295,13 +295,13 @@ fn extract_selectors<'a>(ctx: &mut ExtCtxt, meta: &'a ast::MetaItem) -> Option<S
 fn extract_attributes(ctx: &mut ExtCtxt, meta: &ast::MetaItem) -> Option<Attributes> {
     if let ast::MetaItemKind::List(ref name, ref vec) = meta.node {
         let attributes = vec.iter().map(|meta| ctx.attribute(meta.span, meta.clone()));
-        if name == "default" {
+        if name == "as_default" {
             return Some(Attributes::Default(attributes.collect()));
-        } else if name == "override" {
+        } else if name == "as_override" {
             return Some(Attributes::Override(attributes.collect()));
         }
     }
-    ctx.span_err(meta.span, "Expected `default(...)` or `override(...)`.");
+    ctx.span_err(meta.span, "Expected `as_default(...)` or `as_override(...)`.");
     None
 }
 

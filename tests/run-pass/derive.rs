@@ -1,7 +1,7 @@
 #![feature(plugin)]
 #![plugin(apply_attr)]
 
-#![apply_attr(to(enums, structs, mods(structs)), default(derive(PartialEq)))]
+#![apply_attr(to(enums, structs, mods(structs)), as_default(derive(PartialEq)))]
 
 struct Foo;
 

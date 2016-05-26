@@ -21,13 +21,8 @@ Possible use-cases would be:
 
 ## Getting Started
 
-Add the following to your dependencies in your project's `Cargo.toml`:
-
-```toml
-apply_attr = "0.2.0"
-```
-
-… or whatever [version](https://crates.io/crates/apply_attr) is more up-to-date.
+Add the most recent [version](https://crates.io/crates/apply_attr) of `apply_attr`  
+to your dependencies in your project's `Cargo.toml`.
 
 Then add …
 
@@ -35,6 +30,7 @@ Then add …
 #![feature(plugin)]
 #![plugin(apply_attr)]
 ```
+
 … to your crate's root file (e.g. `lib.rs`, `main.rs`).
 
 Once that's done you're ready to play!
@@ -47,7 +43,7 @@ Once that's done you're ready to play!
 
 // Make all top-level structs as well as those
 // within top-level mods implement `PartialEq`:
-#![apply_attr(to(structs, mods(structs)), default(derive(PartialEq)))]
+#![apply_attr(to(structs, mods(structs)), as_default(derive(PartialEq)))]
 
 pub struct Foo;
 
@@ -57,7 +53,7 @@ mod Bar {
 }
 
 // Disable inlining when `no_inline` feature is present:
-#[cfg_attr(feature = "no_inline", apply_attr(to(fns), override(inline(never))))]
+#[cfg_attr(feature = "no_inline", apply_attr(to(fns), as_override(inline(never))))]
 impl Blee {
   fn foo(&self) { ... }
   fn bar(&self) { ... }
@@ -77,13 +73,13 @@ The `apply_attr` syntax extension provides a single higher-order attribute,
 conveniently named `apply_attr` expecting two arguments:
 
 1. `to(...)` (with `...` being a list of zero or more selectors).
-2. `default(...)` or `override(...)` (with `...` being a list of zero or more attributes).
+2. `as_default(...)` or `as_override(...)` (with `...` being a list of zero or more attributes).
 
 Resulting either of:
 
 ```rust
-#[apply_attr(to(...), default(...))]
-#[apply_attr(to(...), override(...))]
+#[apply_attr(to(...), as_default(...))]
+#[apply_attr(to(...), as_override(...))]
 ```
 
 The first argument (`to(...)`) accepts a nested list of item selectors.
@@ -131,10 +127,10 @@ Nested selectors denote direct ancestry equivalent to CSS's `outer > inner` path
 
 ### Default
 
-Attributes can either be applied as using `default(...)`, in which case …
+Attributes can either be applied as using `as_default(...)`, in which case …
 
 ```rust
-#[apply_attr(to(fns), default(inline(never)))]
+#[apply_attr(to(fns), as_default(inline(never)))]
 impl Foo {
   #[inline(always)]
   fn foo() { ... }
@@ -152,12 +148,12 @@ impl Foo {
 
 … upon completion.
 
-### Override
+### Overriding
 
-Or using `override(...)`, in which case …
+Or using `as_override(...)`, in which case …
 
 ```rust
-#[apply_attr(to(fns), override(inline(never)))]
+#[apply_attr(to(fns), as_override(inline(never)))]
 impl Foo {
   #[inline(always)]
   fn foo() { ... }
@@ -200,4 +196,4 @@ See also the list of [contributors](https://github.com/regexident/apply_attr/con
 
 ## License
 
-This project is licensed under the [**MPL-2.0**](https://tldrlegal.com/license/mozilla-public-license-2.0-(mpl-2) – see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the [**MPL-2.0**](https://www.tldrlegal.com/l/mpl-2.0) – see the [LICENSE.md](LICENSE.md) file for details.
