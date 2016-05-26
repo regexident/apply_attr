@@ -18,292 +18,345 @@ use syntax::ext::build::AstBuilder;
 use syntax::parse::token::intern;
 use syntax::ptr::P;
 
-/// A syntax extension providing higher-order attributes to Rust.
-///
-/// The following higher-order attributes are available:
-///
-/// ```rust
-/// #[apply_attr_crates(...)]    // available for: mods
-/// #[apply_attr_uses(...)]      // available for: mods
-/// #[apply_attr_statics(...)]   // available for: mods
-/// #[apply_attr_consts(...)]    // available for: mods/impls/traits
-/// #[apply_attr_fns(...)]       // available for: mods/impls/traits
-/// #[apply_attr_mods(...)]      // available for: mods
-/// #[apply_attr_fgn_mods(...)]  // available for: mods
-/// #[apply_attr_types(...)]     // available for: mods/impls/traits
-/// #[apply_attr_enums(...)]     // available for: mods
-/// #[apply_attr_structs(...)]   // available for: mods
-/// #[apply_attr_traits(...)]    // available for: mods
-/// #[apply_attr_def_impls(...)] // available for: mods
-/// #[apply_attr_impls(...)]     // available for: mods
-/// #[apply_attr_macros(...)]    // available for: mods/impls
-/// ```
-///
-/// # Example
-///
-/// ```rust
-/// #![feature(plugin)]
-/// #![plugin(apply_attr)]
-///
-/// #![apply_attr_structs(derive(PartialEq))]
-///
-/// pub struct Foo;
-///
-/// #[apply_attr_structs(derive(PartialEq))]
-/// mod Bar {
-///     pub struct Baz;
-///     // ...
-/// }
-///
-/// #![apply_attr_fns(inline)]
-/// impl Blee {
-///   fn foo(&self) { /* ... */ }
-///   fn bar(&self) { /* ... */ }
-///   fn baz(&self) { /* ... */ }
-///   fn blee(&self) { /* ... */ }
-/// }
-///
-/// fn main() {
-///     Foo == Foo;
-///     Bar::Baz == Bar::Baz;
-/// }
-/// ```
 
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
-    let extensions = vec![
-        ("apply_attr_crates", MultiModifier(Box::new(expand_crates))),
-        ("apply_attr_uses", MultiModifier(Box::new(expand_uses))),
-        ("apply_attr_statics", MultiModifier(Box::new(expand_statics))),
-        ("apply_attr_consts", MultiModifier(Box::new(expand_consts))),
-        ("apply_attr_fns", MultiModifier(Box::new(expand_fns))),
-        ("apply_attr_mods", MultiModifier(Box::new(expand_mods))),
-        ("apply_attr_fgn_mods", MultiModifier(Box::new(expand_fgn_mods))),
-        ("apply_attr_types", MultiModifier(Box::new(expand_types))),
-        ("apply_attr_enums", MultiModifier(Box::new(expand_enums))),
-        ("apply_attr_structs", MultiModifier(Box::new(expand_structs))),
-        ("apply_attr_traits", MultiModifier(Box::new(expand_traits))),
-        ("apply_attr_def_impls", MultiModifier(Box::new(expand_def_impls))),
-        ("apply_attr_impls", MultiModifier(Box::new(expand_impls))),
-        ("apply_attr_macros", MultiModifier(Box::new(expand_macros))),
-    ];
-    for (attribute, extension) in extensions.into_iter() {
-        reg.register_syntax_extension(intern(attribute), extension);
+    reg.register_syntax_extension(intern("apply_attr"), MultiModifier(Box::new(expand)));
+}
+
+bitflags! {
+    flags ItemMask: u16 {
+        const ITEM_NONE         = 0b0,
+        const ITEM_EXT_CRATE    = 0b1 <<  0,
+        const ITEM_USE          = 0b1 <<  1,
+        const ITEM_STATIC       = 0b1 <<  2,
+        const ITEM_CONST        = 0b1 <<  3,
+        const ITEM_FN           = 0b1 <<  4,
+        const ITEM_MOD          = 0b1 <<  5,
+        const ITEM_FGN_MOD      = 0b1 <<  6,
+        const ITEM_TY           = 0b1 <<  7,
+        const ITEM_ENUM         = 0b1 <<  8,
+        const ITEM_STRUCT       = 0b1 <<  9,
+        const ITEM_TRAIT        = 0b1 << 10,
+        const ITEM_DEF_IMPL     = 0b1 << 11,
+        const ITEM_IMPL         = 0b1 << 12,
+        const ITEM_MAC          = 0b1 << 13,
     }
 }
 
-macro_rules! expand_function {
-    ($function:ident, $pattern:path, $src:expr, $trg:expr) => (
-        fn $function(ctx: &mut ExtCtxt,
-                     span: Span,
-                     meta: &ast::MetaItem,
-                     ann: Annotatable)
-                     -> Annotatable {
-            match ann {
-                Annotatable::Item(item) => {
-                    Annotatable::Item(expand(ctx, span, meta, item, $src, $trg))
-                }
-                Annotatable::TraitItem(item_ptr) => {
-                    Annotatable::TraitItem(item_ptr) // noop
-                }
-                Annotatable::ImplItem(item_ptr) => {
-                    Annotatable::ImplItem(item_ptr) // noop
-                }
+type Selector = P<ast::MetaItem>;
+type Selectors<'a> = &'a [Selector];
+
+trait SelectorValidation {
+    fn validate(&self, ctx: &mut ExtCtxt) -> bool;
+}
+
+impl SelectorValidation for Selector {
+    fn validate(&self, ctx: &mut ExtCtxt) -> bool {
+        match self.node {
+            ast::MetaItemKind::List(ref name, ref sub_selectors) => {
+                let valid_item = match &**name {
+                    "mods" | "traits" | "impls" => true,
+                    _ => {
+                        let error_msg = format!("Unrecognized selector `{}(...)`.", name);
+                        ctx.span_err(self.span, &error_msg);
+                        false
+                    }
+                };
+                let valid_sub_selectors = sub_selectors.iter()
+                    .fold(true,
+                          |valid, sub_selector| valid & sub_selector.validate(ctx));
+                valid_item & valid_sub_selectors
+            }
+            ast::MetaItemKind::Word(ref name) => {
+                let valid_item = match &**name {
+                    "crates" | "uses" | "statics" | "consts" | "fns" | "mods" | "fgn_mods" |
+                    "types" | "enums" | "structs" | "traits" | "def_impls" | "impls" | "macros" => {
+                        true
+                    }
+                    _ => {
+                        let error_msg = format!("Unrecognized selector `{}`.", name);
+                        ctx.span_err(self.span, &error_msg);
+                        false
+                    }
+                };
+                valid_item
+            }
+            ast::MetaItemKind::NameValue(ref name, ref _value) => {
+                let valid_item = false;
+                let error_msg = format!("Unexpected name value pair `{} = ...`.", name);
+                ctx.span_err(self.span, &error_msg);
+                valid_item
             }
         }
-    )
-}
-
-expand_function!(expand_crates, ast::ItemKind::ExternCrate, SRC_MOD, TRG_EXT_CRATE);
-expand_function!(expand_uses, ast::ItemKind::Use, SRC_MOD, TRG_USE);
-expand_function!(expand_statics, ast::ItemKind::Static, SRC_MOD, TRG_STATIC);
-expand_function!(expand_consts, ast::ItemKind::Const, SRC_MOD | SRC_IMPL | SRC_TRAIT, TRG_CONST);
-expand_function!(expand_fns, ast::ItemKind::Fn, SRC_MOD | SRC_IMPL | SRC_TRAIT, TRG_FN);
-expand_function!(expand_mods, ast::ItemKind::Mod, SRC_MOD, TRG_MOD);
-expand_function!(expand_fgn_mods, ast::ItemKind::ForeignMod, SRC_MOD, TRG_FOREIGN_MOD);
-expand_function!(expand_types, ast::ItemKind::Ty, SRC_MOD | SRC_IMPL | SRC_TRAIT, TRG_TY);
-expand_function!(expand_enums, ast::ItemKind::Enum, SRC_MOD, TRG_ENUM);
-expand_function!(expand_structs, ast::ItemKind::Struct, SRC_MOD, TRG_STRUCT);
-expand_function!(expand_traits, ast::ItemKind::Trait, SRC_MOD, TRG_TRAIT);
-expand_function!(expand_def_impls, ast::ItemKind::DefaultImpl, SRC_MOD, TRG_DEF_IMPL);
-expand_function!(expand_impls, ast::ItemKind::Impl, SRC_MOD, TRG_IMPL);
-expand_function!(expand_macros, ast::ItemKind::Mac, SRC_MOD | SRC_IMPL, TRG_MAC);
-
-type Attr = syntax::codemap::Spanned<syntax::ast::Attribute_>;
-
-bitflags! {
-    flags SourceMask: u8 {
-        const SRC_NONE  = 0b0,
-        const SRC_MOD   = 0b1 << 0,
-        const SRC_IMPL  = 0b1 << 1,
-        const SRC_TRAIT = 0b1 << 2,
     }
 }
 
-bitflags! {
-    flags TargetMask: u16 {
-        const TRG_NONE         = 0b0,
-        const TRG_EXT_CRATE    = 0b1 <<  0,
-        const TRG_USE          = 0b1 <<  1,
-        const TRG_STATIC       = 0b1 <<  2,
-        const TRG_CONST        = 0b1 <<  3,
-        const TRG_FN           = 0b1 <<  4,
-        const TRG_MOD          = 0b1 <<  5,
-        const TRG_FOREIGN_MOD  = 0b1 <<  6,
-        const TRG_TY           = 0b1 <<  7,
-        const TRG_ENUM         = 0b1 <<  8,
-        const TRG_STRUCT       = 0b1 <<  9,
-        const TRG_TRAIT        = 0b1 << 10,
-        const TRG_DEF_IMPL     = 0b1 << 11,
-        const TRG_IMPL         = 0b1 << 12,
-        const TRG_MAC          = 0b1 << 13,
-    }
+type Attribute = syntax::codemap::Spanned<syntax::ast::Attribute_>;
+enum Attributes {
+    Default(Vec<Attribute>),
+    Override(Vec<Attribute>),
 }
 
-fn expand(ctx: &mut ExtCtxt,
-          span: Span,
-          meta: &ast::MetaItem,
-          item: P<ast::Item>,
-          source: SourceMask,
-          target: TargetMask)
-          -> P<ast::Item> {
-    let node_clone = item.node.clone();
-    let node = match node_clone {
-        ast::ItemKind::Mod(m) => {
-            if (source & SRC_MOD) != SRC_NONE {
-                let attrs = get_attributes(ctx, span, meta);
-                let items = expand_mod_items(m.items, &attrs, target);
-                ast::ItemKind::Mod(ast::Mod {
-                    inner: m.inner,
-                    items: items,
-                })
-            } else {
-                ctx.span_err(span, "Attribute not applicable to mods.");
-                ast::ItemKind::Mod(m)
+impl Attributes {
+    fn augment(&self, existing: &[Attribute]) -> Vec<Attribute> {
+        let mut expanded_attrs = vec![];
+        match self {
+            &Attributes::Default(ref attrs) => {
+                expanded_attrs.extend(attrs.iter().cloned());
+                expanded_attrs.extend(existing.iter().cloned());
             }
+            &Attributes::Override(ref attrs) => {
+                expanded_attrs.extend(existing.iter().cloned());
+                expanded_attrs.extend(attrs.iter().cloned());
+            }
+        }
+        expanded_attrs
+    }
+}
+
+fn expand(ctx: &mut ExtCtxt, span: Span, meta: &ast::MetaItem, ann: Annotatable) -> Annotatable {
+    if let Some((selectors, attributes)) = extract_meta(ctx, meta) {
+        fn not_applicable(ctx: &mut ExtCtxt, span: Span) {
+            ctx.span_err(span, "Only applicable to `mod`, `trait` or `impl` items.");
+        }
+        match ann {
+            Annotatable::Item(item_ptr) => {
+                let ptr = item_ptr.map(|item| {
+                    match item.node {
+                        ast::ItemKind::Mod(..) |
+                        ast::ItemKind::Trait(..) |
+                        ast::ItemKind::Impl(..) => {}
+                        _ => {
+                            not_applicable(ctx, span);
+                        }
+                    }
+                    expand_item(ctx, item, selectors, &attributes, true)
+                });
+                Annotatable::Item(ptr)
+            }
+            Annotatable::TraitItem(item_ptr) => {
+                not_applicable(ctx, span);
+                let ptr =
+                    item_ptr.map(|item| expand_trait_item(ctx, item, selectors, &attributes, true));
+                Annotatable::TraitItem(ptr)
+            }
+            Annotatable::ImplItem(item_ptr) => {
+                not_applicable(ctx, span);
+                let ptr =
+                    item_ptr.map(|item| expand_impl_item(ctx, item, selectors, &attributes, true));
+                Annotatable::ImplItem(ptr)
+            }
+        }
+    } else {
+        ann
+    }
+}
+
+fn expand_item(ctx: &mut ExtCtxt,
+               item: ast::Item,
+               selectors: Selectors,
+               attributes: &Attributes,
+               is_root: bool)
+               -> ast::Item {
+    let item_mask = map_item_to_mask(&item);
+    let selector_mask = extract_mask_from_selectors(selectors);
+    let sub_selectors = if is_root {
+        selectors.to_owned() // simply forward selectors for root item
+    } else {
+        extract_sub_selectors(selectors, item_mask)
+    };
+    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, &attributes);
+    let node = match item.node {
+        ast::ItemKind::Mod(m) => {
+            let expanded_items = m.items
+                .into_iter()
+                .map(|item_ptr| {
+                    item_ptr.map(|item| expand_item(ctx, item, &sub_selectors, attributes, false))
+                });
+            ast::ItemKind::Mod(ast::Mod {
+                inner: m.inner,
+                items: expanded_items.collect(),
+            })
         }
         ast::ItemKind::Trait(unsafety, generics, bounds, items) => {
-            if (source & SRC_TRAIT) != SRC_NONE {
-                let attrs = get_attributes(ctx, span, meta);
-                let items = expand_trait_items(items, &attrs, target);
-                ast::ItemKind::Trait(unsafety, generics, bounds, items)
-            } else {
-                ctx.span_err(span, "Attribute not applicable to traits.");
-                ast::ItemKind::Trait(unsafety, generics, bounds, items)
-            }
+            let expanded_items = items.into_iter()
+                .map(|item| expand_trait_item(ctx, item, &sub_selectors, attributes, false));
+            ast::ItemKind::Trait(unsafety, generics, bounds, expanded_items.collect())
         }
         ast::ItemKind::Impl(unsafety, polarity, generics, trt, typ, items) => {
-            if (source & SRC_IMPL) != SRC_NONE {
-                let attrs = get_attributes(ctx, span, meta);
-                let items = expand_impl_items(items, &attrs, target);
-                ast::ItemKind::Impl(unsafety, polarity, generics, trt, typ, items)
-            } else {
-                ctx.span_err(span, "Attribute not applicable to impls.");
-                ast::ItemKind::Impl(unsafety, polarity, generics, trt, typ, items)
-            }
+            let expanded_items = items.into_iter()
+                .map(|item| expand_impl_item(ctx, item, &sub_selectors, attributes, false));
+            ast::ItemKind::Impl(unsafety,
+                                polarity,
+                                generics,
+                                trt,
+                                typ,
+                                expanded_items.collect())
         }
-        _ => {
-            ctx.span_err(span, "Attribute not applicable here.");
-            node_clone
-        }
+        _ => item.node,
     };
-    P(ast::Item { node: node, ..((*item).clone()) })
+    ast::Item {
+        node: node,
+        attrs: augmented_attributes,
+        ..item
+    }
 }
 
-fn get_attributes(ctx: &mut ExtCtxt, span: Span, meta: &ast::MetaItem) -> Vec<Attr> {
+fn expand_trait_item(_ctx: &mut ExtCtxt,
+                     item: ast::TraitItem,
+                     selectors: Selectors,
+                     attributes: &Attributes,
+                     _is_root: bool)
+                     -> ast::TraitItem {
+    let item_mask = map_trait_item_to_mask(&item);
+    let selector_mask = extract_mask_from_selectors(selectors);
+    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, &attributes);
+    ast::TraitItem { attrs: augmented_attributes, ..item }
+}
+
+fn expand_impl_item(_ctx: &mut ExtCtxt,
+                    item: ast::ImplItem,
+                    selectors: Selectors,
+                    attributes: &Attributes,
+                    _is_root: bool)
+                    -> ast::ImplItem {
+    let item_mask = map_impl_item_to_mask(&item);
+    let selector_mask = extract_mask_from_selectors(selectors);
+    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, &attributes);
+    ast::ImplItem { attrs: augmented_attributes, ..item }
+}
+
+fn extract_mask_from_selectors(selectors: Selectors) -> ItemMask {
+    selectors.iter().fold(ITEM_NONE, |mask, selector| {
+        mask |
+        match (*selector).node {
+            ast::MetaItemKind::Word(ref name) => map_selector_to_mask(&**name),
+            _ => ITEM_NONE,
+        }
+    })
+}
+
+fn extract_sub_selectors(selectors: Selectors, mask: ItemMask) -> Vec<Selector> {
+    for selector in selectors {
+        if let ast::MetaItemKind::List(ref name, ref vec) = (*selector).node {
+            if mask & map_selector_to_mask(&**name) != ITEM_NONE {
+                return vec.clone();
+            }
+        }
+    }
+    vec![]
+}
+
+fn extract_meta<'a>(ctx: &mut ExtCtxt,
+                    meta: &'a ast::MetaItem)
+                    -> Option<(Selectors<'a>, Attributes)> {
     if let ast::MetaItemKind::List(_, ref vec) = meta.node {
-        vec.iter().map(|meta_item| ctx.attribute(span, meta_item.clone())).collect()
+        if vec.len() == 2 {
+            let selectors = extract_selectors(ctx, &*vec[0]);
+            let attributes = extract_attributes(ctx, &*vec[1]);
+            if let (Some(selectors), Some(attributes)) = (selectors, attributes) {
+                return Some((selectors, attributes));
+            }
+        }
+    }
+    ctx.span_err(meta.span,
+                 "Expected 'apply_attr(to(...), default|override(...))'.");
+    None
+}
+
+fn fold_attributes(item_mask: ItemMask,
+                   selector_mask: ItemMask,
+                   item_attributes: &[Attribute],
+                   attributes: &Attributes)
+                   -> Vec<Attribute> {
+    if (selector_mask & item_mask) != ITEM_NONE {
+        attributes.augment(&item_attributes)
     } else {
-        ctx.span_err(span, "Expects a list of applicable attributes.");
-        vec![]
+        item_attributes.to_owned()
     }
 }
 
-fn expand_mod_items(items: Vec<P<ast::Item>>,
-                    attrs: &[Attr],
-                    target: TargetMask)
-                    -> Vec<P<ast::Item>> {
-    items.iter()
-        .map(|item| {
-            if item_matches_target(item, target) {
-                item.clone().map(|item| {
-                    let mut expanded_attrs = attrs.to_owned();
-                    expanded_attrs.extend(item.attrs);
-                    ast::Item { attrs: expanded_attrs, ..item }
-                })
-            } else {
-                item.clone()
+fn extract_selectors<'a>(ctx: &mut ExtCtxt, meta: &'a ast::MetaItem) -> Option<Selectors<'a>> {
+    if let &ast::MetaItemKind::List(ref name, ref selectors) = &meta.node {
+        if name == "to" {
+            let valid_selectors = selectors.iter()
+                .fold(true, |valid, selector| valid & selector.validate(ctx));
+            if !valid_selectors {
+                return None;
             }
-        })
-        .collect()
+            return Some(selectors);
+        }
+    }
+    ctx.span_err(meta.span, "Expected `to(...)`.");
+    None
 }
 
-fn expand_impl_items(items: Vec<ast::ImplItem>,
-                     attrs: &[Attr],
-                     target: TargetMask)
-                     -> Vec<ast::ImplItem> {
-    items.iter()
-        .map(|item| {
-            if impl_item_matches_target(item, target) {
-                let mut expanded_attrs = attrs.to_owned();
-                expanded_attrs.extend(item.attrs.clone());
-                ast::ImplItem { attrs: expanded_attrs, ..item.clone() }
-            } else {
-                item.clone()
-            }
-        })
-        .collect()
+fn extract_attributes(ctx: &mut ExtCtxt, meta: &ast::MetaItem) -> Option<Attributes> {
+    if let ast::MetaItemKind::List(ref name, ref vec) = meta.node {
+        let attributes = vec.iter().map(|meta| ctx.attribute(meta.span, meta.clone()));
+        if name == "default" {
+            return Some(Attributes::Default(attributes.collect()));
+        } else if name == "override" {
+            return Some(Attributes::Override(attributes.collect()));
+        }
+    }
+    ctx.span_err(meta.span, "Expected `default(...)` or `override(...)`.");
+    None
 }
 
-fn expand_trait_items(items: Vec<ast::TraitItem>,
-                      attrs: &[Attr],
-                      target: TargetMask)
-                      -> Vec<ast::TraitItem> {
-    items.iter()
-        .map(|item| {
-            if trait_item_matches_target(item, target) {
-                let mut expanded_attrs = attrs.to_owned();
-                expanded_attrs.extend(item.attrs.clone());
-                ast::TraitItem { attrs: expanded_attrs, ..item.clone() }
-            } else {
-                item.clone()
-            }
-        })
-        .collect()
-}
-
-fn item_matches_target(item: &ast::Item, target: TargetMask) -> bool {
-    match item.node {
-        ast::ItemKind::ExternCrate(..) => (target & TRG_EXT_CRATE) != TRG_NONE,
-        ast::ItemKind::Use(..) => (target & TRG_USE) != TRG_NONE,
-        ast::ItemKind::Static(..) => (target & TRG_STATIC) != TRG_NONE,
-        ast::ItemKind::Const(..) => (target & TRG_CONST) != TRG_NONE,
-        ast::ItemKind::Fn(..) => (target & TRG_FN) != TRG_NONE,
-        ast::ItemKind::Mod(..) => (target & TRG_MOD) != TRG_NONE,
-        ast::ItemKind::ForeignMod(..) => (target & TRG_FOREIGN_MOD) != TRG_NONE,
-        ast::ItemKind::Ty(..) => (target & TRG_TY) != TRG_NONE,
-        ast::ItemKind::Enum(..) => (target & TRG_ENUM) != TRG_NONE,
-        ast::ItemKind::Struct(..) => (target & TRG_STRUCT) != TRG_NONE,
-        ast::ItemKind::Trait(..) => (target & TRG_TRAIT) != TRG_NONE,
-        ast::ItemKind::DefaultImpl(..) => (target & TRG_DEF_IMPL) != TRG_NONE,
-        ast::ItemKind::Impl(..) => (target & TRG_IMPL) != TRG_NONE,
-        ast::ItemKind::Mac(..) => (target & TRG_MAC) != TRG_NONE,
+fn map_selector_to_mask(selector: &str) -> ItemMask {
+    match selector {
+        "crates" => ITEM_EXT_CRATE,
+        "uses" => ITEM_USE,
+        "statics" => ITEM_STATIC,
+        "consts" => ITEM_CONST,
+        "fns" => ITEM_FN,
+        "mods" => ITEM_MOD,
+        "fgn_mods" => ITEM_FGN_MOD,
+        "types" => ITEM_TY,
+        "enums" => ITEM_ENUM,
+        "structs" => ITEM_STRUCT,
+        "traits" => ITEM_TRAIT,
+        "def_impls" => ITEM_DEF_IMPL,
+        "impls" => ITEM_IMPL,
+        "macros" => ITEM_MAC,
+        _ => ITEM_NONE,
     }
 }
 
-fn trait_item_matches_target(item: &ast::TraitItem, target: TargetMask) -> bool {
+fn map_item_to_mask(item: &ast::Item) -> ItemMask {
     match item.node {
-        ast::TraitItemKind::Const(..) => (target & TRG_CONST) != TRG_NONE,
-        ast::TraitItemKind::Method(..) => (target & TRG_FN) != TRG_NONE,
-        ast::TraitItemKind::Type(..) => (target & TRG_TY) != TRG_NONE,
+        ast::ItemKind::ExternCrate(..) => ITEM_EXT_CRATE,
+        ast::ItemKind::Use(..) => ITEM_USE,
+        ast::ItemKind::Static(..) => ITEM_STATIC,
+        ast::ItemKind::Const(..) => ITEM_CONST,
+        ast::ItemKind::Fn(..) => ITEM_FN,
+        ast::ItemKind::Mod(..) => ITEM_MOD,
+        ast::ItemKind::ForeignMod(..) => ITEM_FGN_MOD,
+        ast::ItemKind::Ty(..) => ITEM_TY,
+        ast::ItemKind::Enum(..) => ITEM_ENUM,
+        ast::ItemKind::Struct(..) => ITEM_STRUCT,
+        ast::ItemKind::Trait(..) => ITEM_TRAIT,
+        ast::ItemKind::DefaultImpl(..) => ITEM_DEF_IMPL,
+        ast::ItemKind::Impl(..) => ITEM_IMPL,
+        ast::ItemKind::Mac(..) => ITEM_MAC,
     }
 }
 
-fn impl_item_matches_target(item: &ast::ImplItem, target: TargetMask) -> bool {
+fn map_trait_item_to_mask(item: &ast::TraitItem) -> ItemMask {
     match item.node {
-        ast::ImplItemKind::Const(..) => (target & TRG_CONST) != TRG_NONE,
-        ast::ImplItemKind::Method(..) => (target & TRG_FN) != TRG_NONE,
-        ast::ImplItemKind::Type(..) => (target & TRG_TY) != TRG_NONE,
-        ast::ImplItemKind::Macro(..) => (target & TRG_MAC) != TRG_NONE,
+        ast::TraitItemKind::Const(..) => ITEM_CONST,
+        ast::TraitItemKind::Method(..) => ITEM_FN,
+        ast::TraitItemKind::Type(..) => ITEM_TY,
+    }
+}
+
+fn map_impl_item_to_mask(item: &ast::ImplItem) -> ItemMask {
+    match item.node {
+        ast::ImplItemKind::Const(..) => ITEM_CONST,
+        ast::ImplItemKind::Method(..) => ITEM_FN,
+        ast::ImplItemKind::Type(..) => ITEM_TY,
+        ast::ImplItemKind::Macro(..) => ITEM_MAC,
     }
 }
