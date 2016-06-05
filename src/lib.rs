@@ -69,7 +69,7 @@ impl SelectorValidation for Selector {
                 valid_item & valid_sub_selectors
             }
             ast::MetaItemKind::Word(ref name) => {
-                let valid_item = match &**name {
+                match &**name {
                     "crates" | "uses" | "statics" | "consts" | "fns" | "mods" | "fgn_mods" |
                     "types" | "enums" | "structs" | "traits" | "def_impls" | "impls" | "macros" => {
                         true
@@ -79,8 +79,7 @@ impl SelectorValidation for Selector {
                         ctx.span_err(self.span, &error_msg);
                         false
                     }
-                };
-                valid_item
+                }
             }
             ast::MetaItemKind::NameValue(ref name, ref _value) => {
                 let valid_item = false;
@@ -101,12 +100,12 @@ enum Attributes {
 impl Attributes {
     fn augment(&self, existing: &[Attribute]) -> Vec<Attribute> {
         let mut expanded_attrs = vec![];
-        match self {
-            &Attributes::Default(ref attrs) => {
+        match *self {
+            Attributes::Default(ref attrs) => {
                 expanded_attrs.extend(attrs.iter().cloned());
                 expanded_attrs.extend(existing.iter().cloned());
             }
-            &Attributes::Override(ref attrs) => {
+            Attributes::Override(ref attrs) => {
                 expanded_attrs.extend(existing.iter().cloned());
                 expanded_attrs.extend(attrs.iter().cloned());
             }
@@ -166,7 +165,7 @@ fn expand_item(ctx: &mut ExtCtxt,
     } else {
         extract_sub_selectors(selectors, item_mask)
     };
-    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, &attributes);
+    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, attributes);
     let node = match item.node {
         ast::ItemKind::Mod(m) => {
             let expanded_items = m.items
@@ -211,7 +210,7 @@ fn expand_trait_item(_ctx: &mut ExtCtxt,
                      -> ast::TraitItem {
     let item_mask = map_trait_item_to_mask(&item);
     let selector_mask = extract_mask_from_selectors(selectors);
-    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, &attributes);
+    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, attributes);
     ast::TraitItem { attrs: augmented_attributes, ..item }
 }
 
@@ -223,7 +222,7 @@ fn expand_impl_item(_ctx: &mut ExtCtxt,
                     -> ast::ImplItem {
     let item_mask = map_impl_item_to_mask(&item);
     let selector_mask = extract_mask_from_selectors(selectors);
-    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, &attributes);
+    let augmented_attributes = fold_attributes(item_mask, selector_mask, &item.attrs, attributes);
     ast::ImplItem { attrs: augmented_attributes, ..item }
 }
 
@@ -271,14 +270,14 @@ fn fold_attributes(item_mask: ItemMask,
                    attributes: &Attributes)
                    -> Vec<Attribute> {
     if (selector_mask & item_mask) != ITEM_NONE {
-        attributes.augment(&item_attributes)
+        attributes.augment(item_attributes)
     } else {
         item_attributes.to_owned()
     }
 }
 
 fn extract_selectors<'a>(ctx: &mut ExtCtxt, meta: &'a ast::MetaItem) -> Option<Selectors<'a>> {
-    if let &ast::MetaItemKind::List(ref name, ref selectors) = &meta.node {
+    if let ast::MetaItemKind::List(ref name, ref selectors) = meta.node {
         if name == "to" {
             let valid_selectors = selectors.iter()
                 .fold(true, |valid, selector| valid & selector.validate(ctx));
