@@ -300,7 +300,8 @@ fn extract_attributes(ctx: &mut ExtCtxt, meta: &ast::MetaItem) -> Option<Attribu
             return Some(Attributes::Override(attributes.collect()));
         }
     }
-    ctx.span_err(meta.span, "Expected `as_default(...)` or `as_override(...)`.");
+    ctx.span_err(meta.span,
+                 "Expected `as_default(...)` or `as_override(...)`.");
     None
 }
 
@@ -348,6 +349,7 @@ fn map_trait_item_to_mask(item: &ast::TraitItem) -> ItemMask {
         ast::TraitItemKind::Const(..) => ITEM_CONST,
         ast::TraitItemKind::Method(..) => ITEM_FN,
         ast::TraitItemKind::Type(..) => ITEM_TY,
+        ast::TraitItemKind::Macro(..) => ITEM_MAC,
     }
 }
 
