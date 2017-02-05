@@ -1,3 +1,5 @@
+#![feature(custom_attribute)]
+
 #![feature(plugin)]
 #![plugin(apply_attr)]
 
@@ -18,7 +20,7 @@ impl Baz {}
 extern crate apply_attr;
 
 #[apply_attr(to(), as_default())] //~ ERROR Only applicable to `mod`, `trait` or `impl` items.
-use foo;
+use bar;
 
 #[apply_attr(to(), as_default())] //~ ERROR Only applicable to `mod`, `trait` or `impl` items.
 static FOO: usize = 42;

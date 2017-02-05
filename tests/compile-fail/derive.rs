@@ -1,3 +1,5 @@
+#![feature(custom_attribute)]
+
 #![feature(plugin)]
 #![plugin(apply_attr)]
 

@@ -21,12 +21,14 @@ Possible use-cases would be:
 
 ## Getting Started
 
-Add the most recent [version](https://crates.io/crates/apply_attr) of `apply_attr`  
+Add the most recent [version](https://crates.io/crates/apply_attr) of `apply_attr`
 to your dependencies in your project's `Cargo.toml`.
 
 Then add …
 
 ```rust
+#![feature(custom_attribute)]
+
 #![feature(plugin)]
 #![plugin(apply_attr)]
 ```
@@ -38,6 +40,8 @@ Once that's done you're ready to play!
 # Example
 
 ```rust
+#![feature(custom_attribute)]
+
 #![feature(plugin)]
 #![plugin(apply_attr)]
 
@@ -69,7 +73,7 @@ fn main() {
 
 ## API Reference
 
-The `apply_attr` syntax extension provides a single higher-order attribute,  
+The `apply_attr` syntax extension provides a single higher-order attribute,
 conveniently named `apply_attr` expecting two arguments:
 
 1. `to(...)` (with `...` being a list of zero or more selectors).
@@ -181,7 +185,7 @@ cargo rustc -- -Z unstable-options --pretty=expanded
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our [code of conduct](https://www.rust-lang.org/conduct.html),  
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our [code of conduct](https://www.rust-lang.org/conduct.html),
 and the process for submitting pull requests to us.
 
 ## Versioning
