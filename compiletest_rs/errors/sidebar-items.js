@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["ErrorKind",""]],"fn":[["load_errors","Looks for either \"//~| KIND MESSAGE\" or \"//~^^... KIND MESSAGE\" The former is a \"follow\" that inherits its target from the preceding line; the latter is an \"adjusts\" that goes that many lines up."]],"struct":[["Error",""]]});
