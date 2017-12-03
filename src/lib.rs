@@ -24,7 +24,7 @@ pub fn plugin_registrar(reg: &mut Registry) {
 }
 
 bitflags! {
-    flags ItemMask: u16 {
+    flags ItemMask: u32 {
         const ITEM_NONE      = 0b0,
         const ITEM_EXT_CRATE = 0b1 <<  0,
         const ITEM_USE       = 0b1 <<  1,
@@ -33,14 +33,16 @@ bitflags! {
         const ITEM_FN        = 0b1 <<  4,
         const ITEM_MOD       = 0b1 <<  5,
         const ITEM_FGN_MOD   = 0b1 <<  6,
-        const ITEM_TY        = 0b1 <<  7,
-        const ITEM_ENUM      = 0b1 <<  8,
-        const ITEM_STRUCT    = 0b1 <<  9,
-        const ITEM_UNION     = 0b1 << 10,
-        const ITEM_TRAIT     = 0b1 << 11,
-        const ITEM_DEF_IMPL  = 0b1 << 12,
-        const ITEM_IMPL      = 0b1 << 13,
-        const ITEM_MAC       = 0b1 << 14,
+        const ITEM_GBL_ASM   = 0b1 <<  7,
+        const ITEM_TY        = 0b1 <<  8,
+        const ITEM_ENUM      = 0b1 <<  9,
+        const ITEM_STRUCT    = 0b1 << 10,
+        const ITEM_UNION     = 0b1 << 11,
+        const ITEM_TRAIT     = 0b1 << 12,
+        const ITEM_DEF_IMPL  = 0b1 << 13,
+        const ITEM_IMPL      = 0b1 << 14,
+        const ITEM_MAC       = 0b1 << 15,
+        const ITEM_MAC_DEF   = 0b1 << 16,
     }
 }
 
@@ -187,11 +189,12 @@ fn expand_item(ctx: &mut ExtCtxt,
                 .map(|item| expand_trait_item(ctx, item, &sub_selectors, attributes, false));
             ast::ItemKind::Trait(unsafety, generics, bounds, expanded_items.collect())
         }
-        ast::ItemKind::Impl(unsafety, polarity, generics, trt, typ, items) => {
+        ast::ItemKind::Impl(unsafety, polarity, defaultness, generics, trt, typ, items) => {
             let expanded_items = items.into_iter()
                 .map(|item| expand_impl_item(ctx, item, &sub_selectors, attributes, false));
             ast::ItemKind::Impl(unsafety,
                                 polarity,
+                                defaultness,
                                 generics,
                                 trt,
                                 typ,
@@ -350,6 +353,7 @@ fn map_selector_to_mask(selector: &str) -> ItemMask {
         "fns" => ITEM_FN,
         "mods" => ITEM_MOD,
         "fgn_mods" => ITEM_FGN_MOD,
+        "global_asms" => ITEM_GBL_ASM,
         "types" => ITEM_TY,
         "enums" => ITEM_ENUM,
         "structs" => ITEM_STRUCT,
@@ -358,6 +362,7 @@ fn map_selector_to_mask(selector: &str) -> ItemMask {
         "def_impls" => ITEM_DEF_IMPL,
         "impls" => ITEM_IMPL,
         "macros" => ITEM_MAC,
+        "macro_defs" => ITEM_MAC_DEF,
         _ => ITEM_NONE,
     }
 }
@@ -371,6 +376,7 @@ fn map_item_to_mask(item: &ast::Item) -> ItemMask {
         ast::ItemKind::Fn(..) => ITEM_FN,
         ast::ItemKind::Mod(..) => ITEM_MOD,
         ast::ItemKind::ForeignMod(..) => ITEM_FGN_MOD,
+        ast::ItemKind::GlobalAsm(..) => ITEM_GBL_ASM,
         ast::ItemKind::Ty(..) => ITEM_TY,
         ast::ItemKind::Enum(..) => ITEM_ENUM,
         ast::ItemKind::Struct(..) => ITEM_STRUCT,
@@ -379,6 +385,7 @@ fn map_item_to_mask(item: &ast::Item) -> ItemMask {
         ast::ItemKind::DefaultImpl(..) => ITEM_DEF_IMPL,
         ast::ItemKind::Impl(..) => ITEM_IMPL,
         ast::ItemKind::Mac(..) => ITEM_MAC,
+        ast::ItemKind::MacroDef(..) => ITEM_MAC_DEF,
     }
 }
 
